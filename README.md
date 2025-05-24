@@ -41,3 +41,7 @@ DM me if you'd like to add:
 If you need help, want to request a fix, or have an idea for improvement:
 - Message me on Discord: monika_base64
 - Or open an issue on this GitHub repo
+
+## **IMPORTANT**
+This project is for learning purposes only. Commercial use or any illegal activity is prohibited. Any direct or indirect consequences occured from the use of this project will be beared solely by the user, not by the author.
+By using this project, you fully understand and accept the above terms
