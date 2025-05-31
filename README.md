@@ -1,6 +1,6 @@
 # LOL Skins Collection
 
-Welcome to the collection of custom League of Legends skins!
+Welcome to the collection of League of Legends skins!
 
 This repo contains **pre-packed `.zip` files** for various skins. These can be used with tools like **CSLOL Manager** to apply the skins in-game with ease.
 
