@@ -1,22 +1,48 @@
-# LOL Skins Collection
+# 🎮 League of Legends Skins Collection & WAD Tools
 
-Welcome to the collection of League of Legends skins!
-
-This repo contains **pre-packed `.zip` files** for various skins. These can be used with tools like **CSLOL Manager** to apply the skins in-game with ease.
+Welcome to the **Shinano LOL Repository** — a custom-skin archive and toolset for League of Legends enthusiasts.
 
 ---
 
-## 🛠 How to Use
+## 📦 Skins Download Collection
 
-1. **Download** any `.zip` file from the skin folder.
-2. Open [**CSLOL Manager**](https://github.com/LoL-Fantome/CSLoL-Manager) (or any similar custom skin tool).
-3. Import the downloaded `.zip` file into the manager.
-4. **Launch League of Legends** and choose the **base skin** for the champion.
-5. The custom skin will be applied automatically in-game.
+This repo contains **pre-packed `.zip` files** for various custom skins. These can be imported directly into tools like [**CSLOL Manager**](https://github.com/LoL-Fantome/CSLoL-Manager).
 
-> ✅ Make sure to select the **base/default skin** for it to work properly!
+### 🛠 How to Use Skins
+
+1. **Download** any `.zip` file from the `skins/` folder.
+2. Open CSLOL Manager (or similar custom skin tool).
+3. Import the downloaded skin `.zip`.
+4. Launch **League of Legends** and select the **base/default skin** for the champion.
+5. Enjoy your modded skin!
+
+> ✅ *You must use the **base/default** skin for the custom skin to show in-game.*
 
 ---
+
+## 🧰 Local WAD Extractor (Mac/Web)
+
+Included in this repo is a fully working **WAD WebUI Tool** that lets you:
+- Upload `.wad.client` files from League's game client
+- View, extract, and inspect embedded `.bin`, `.dds`, `.skl`, and other assets
+- Use it locally in a browser with a dark-themed UI
+
+### 🚀 How to Use the Extractor
+
+#### Prerequisites
+
+- Python 3.10+
+- `pip install flask xxhash`
+
+#### Run the WebUI
+
+```bash
+cd wad-webui
+python app.py
+```
+
+Then open: http://localhost:5000
+Drag in any .wad.client file and the tool will extract its contents.
 
 ## 💻 How to Download This Repository (on Windows)
 
