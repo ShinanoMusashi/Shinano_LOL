@@ -61,9 +61,11 @@ Included in this repo is **`ritobin_mac.py`** – a standalone script that:
   ```bash
   pip install xxhash
   
-# from the repo root
+# From the repo root
+``` bash
 python bin-webui/ritobin_mac.py path/to/skin*.bin
-(All credit goes to moonshadow565 (https://github.com/moonshadow565/ritobin) and other contributer) (My only job here is ported their code from Windows to MacOS and from C++ to Python)
+```
+- (All credit goes to moonshadow565 (https://github.com/moonshadow565/ritobin) and other contributer) (My only job here is ported their code from Windows to MacOS and from C++ to Python)
 
 ## 💻 How to Download This Repository (on Windows)
 
