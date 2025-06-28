@@ -44,6 +44,27 @@ python app.py
 Then open: http://localhost:5000
 Drag in any .wad.client file and the tool will extract its contents.
 
+## 🧰 Local BIN Decoder (Python CLI)
+
+Included in this repo is **`ritobin_mac.py`** – a standalone script that:
+
+- Reads any Riot `.bin` file (character skins, VFX, audio, etc.)
+- Resolves every hashed field/type name using Riot’s official hash tables
+- Emits a clean `.py` module (`data = {...}`) you can import or inspect
+
+### 🚀 How to Use the Decoder
+
+#### Prerequisites
+
+- Python 3.9 or newer  
+- Install one tiny dependency:  
+  ```bash
+  pip install xxhash
+  
+# from the repo root
+python bin-webui/ritobin_mac.py path/to/skin*.bin
+(All credit goes to moonshadow565 (https://github.com/moonshadow565/ritobin) and other contributer) (My only job here is ported their code from Windows to MacOS and from C++ to Python)
+
 ## 💻 How to Download This Repository (on Windows)
 
 If you want the whole collection:
