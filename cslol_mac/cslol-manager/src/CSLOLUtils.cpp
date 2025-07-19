@@ -28,22 +28,43 @@ QString CSLOLUtils::toFile(QString file) {
 }
 
 static QString try_game_path(QString path) {
+    qDebug() << "DEBUG: try_game_path called with:" << path;
 #ifdef Q_OS_WIN
     if (auto info = QFileInfo(path + "/League of Legends.exe"); info.exists()) {
         return info.canonicalPath();
     }
 #elif defined(Q_OS_MAC)
-    // On macOS, we want to find the LoL directory that contains LeagueClient.app
+    // On macOS, we want to find the Game directory that mod-tools expects
     if (auto info = QFileInfo(path + "/LeagueClient.app"); info.exists()) {
-        return path;  // This is the LoL directory
+        qDebug() << "DEBUG: Found LeagueClient.app at:" << path;
+        // Check if Game directory exists
+        if (auto gameInfo = QFileInfo(path + "/Game"); gameInfo.exists()) {
+            QString result = QFileInfo(path + "/Game").canonicalFilePath();  // Resolve any .. paths
+            qDebug() << "DEBUG: Found Game directory, returning:" << result;
+            return result;
+        }
+        QString result = QFileInfo(path).canonicalFilePath();  // Resolve any .. paths
+        qDebug() << "DEBUG: No Game directory found, returning:" << result;
+        return result;
     }
     // Check if this is the .app bundle
     if (path.endsWith(".app")) {
+        qDebug() << "DEBUG: Path ends with .app:" << path;
         if (auto info = QFileInfo(path + "/Contents/LoL/LeagueClient.app"); info.exists()) {
-            return path + "/Contents/LoL";  // Return the LoL directory
+            qDebug() << "DEBUG: Found LeagueClient.app in app bundle";
+            // Check if Game directory exists
+            if (auto gameInfo = QFileInfo(path + "/Contents/LoL/Game"); gameInfo.exists()) {
+                QString result = QFileInfo(path + "/Contents/LoL/Game").canonicalFilePath();  // Resolve paths
+                qDebug() << "DEBUG: Found Game directory, returning:" << result;
+                return result;
+            }
+            QString result = QFileInfo(path + "/Contents/LoL").canonicalFilePath();  // Resolve paths
+            qDebug() << "DEBUG: No Game directory in app bundle, returning:" << result;
+            return result;
         }
     }
 #endif
+    qDebug() << "DEBUG: No match found, returning empty";
     return "";
 }
 

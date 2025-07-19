@@ -253,29 +253,13 @@ void CSLOLToolsImpl::changeLeaguePath(QString newLeaguePath) {
             newLeaguePath = info.canonicalPath();
         }
 #elif defined(Q_OS_MAC)
-        // On macOS, validate and normalize the League path
-        bool validPath = false;
-        
-        if (newLeaguePath.endsWith(".app")) {
-            // User selected the .app bundle
-            if (auto info = QFileInfo(newLeaguePath + "/Contents/LoL/LeagueClient.app"); info.exists()) {
-                // Store the LoL directory path, not the .app path
-                newLeaguePath = info.canonicalPath() + "/..";
-                newLeaguePath = QFileInfo(newLeaguePath).canonicalPath();
-                validPath = true;
-            }
-        } else if (auto info = QFileInfo(newLeaguePath + "/LeagueClient.app"); info.exists()) {
-            // User selected the LoL directory directly - this is what we want
-            validPath = true;
-        } else if (auto info = QFileInfo(newLeaguePath + "/../LeagueClient.app"); info.exists()) {
-            // User selected a subdirectory, go up one level
-            newLeaguePath = QFileInfo(newLeaguePath + "/..").canonicalPath();
-            validPath = true;
-        }
-        
-        if (!validPath) {
-            doReportError("Invalid League Path", 
-                         "Please select the League of Legends.app or the LoL directory inside it", 
+        // On macOS, use our checkGamePath function to normalize the path
+        QString normalizedPath = CSLOLUtils().checkGamePath(newLeaguePath);
+        if (!normalizedPath.isEmpty()) {
+            newLeaguePath = normalizedPath;
+        } else {
+            doReportError("Invalid League Path",
+                         "Please select the League of Legends.app or the LoL directory inside it",
                          "Selected path: " + newLeaguePath);
             setState(state_ == CSLOLState::StateUnitialized ? CSLOLState::StateUnitialized : CSLOLState::StateIdle);
             return;
@@ -663,7 +647,10 @@ void CSLOLToolsImpl::runTool(QStringList args, std::function<void(int code, QPro
             process->deleteLater();
         }
     });
-    process->start(prog_ + MOD_TOOLS_EXE, args);
+QString modToolsPath = prog_ + "/" + MOD_TOOLS_EXE;
+qDebug() << "DEBUG: Looking for mod-tools at:" << modToolsPath;
+qDebug() << "DEBUG: File exists?" << QFileInfo(modToolsPath).exists();
+    process->start(prog_ + "/" + MOD_TOOLS_EXE, args);
 }
 
 void CSLOLToolsImpl::runPatcher(QStringList args) {
@@ -699,7 +686,7 @@ void CSLOLToolsImpl::runPatcher(QStringList args) {
             }
         });
     }
-    patcherProcess_->start(prog_ + MOD_TOOLS_EXE, args);
+    patcherProcess_->start(prog_ + "/" + MOD_TOOLS_EXE, args);
 }
 
 void CSLOLToolsImpl::runDiagInternal(bool internal_once) {

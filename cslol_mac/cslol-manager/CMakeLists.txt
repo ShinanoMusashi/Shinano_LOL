@@ -63,6 +63,24 @@ elseif(APPLE)
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
         MACOSX_BUNDLE_GUI_IDENTIFIER cslol.manager
         )
+    
+    # ADD THIS BLOCK HERE:
+    add_custom_command(TARGET cslol-manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory 
+    ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_BINARY_DIR}/cslol-tools/mod-tools
+    ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/mod-tools
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_BINARY_DIR}/cslol-tools/wad-extract
+    ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/wad-extract
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_BINARY_DIR}/cslol-tools/wad-make
+    ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/wad-make
+    COMMENT "Copying all cslol-tools into app bundle"
+    DEPENDS mod-tools wad-extract wad-make
+)
+    
     install(CODE [[
       include(BundleUtilities)
       fixup_bundle("${CMAKE_BINARY_DIR}/cslol-manager/cslol-manager.app" "" "")
