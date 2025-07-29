@@ -1,0 +1,5 @@
+---
+triple:          'x86_64-apple-darwin'
+binary-path:     libcslol_minimal_test_x86.dylib
+relocations:     []
+...

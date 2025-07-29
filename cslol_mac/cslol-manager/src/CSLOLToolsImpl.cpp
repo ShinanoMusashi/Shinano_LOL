@@ -14,6 +14,7 @@
 #include <QThread>
 #include <QVersionNumber>
 #include <fstream>
+#include <QStandardPaths>
 
 #include "CSLOLUtils.h"
 #include "CSLOLVersion.h"
@@ -25,8 +26,24 @@
 #    define MOD_TOOLS_EXE "cslol-tools/mod-tools"
 #endif
 
-CSLOLToolsImpl::CSLOLToolsImpl(QObject* parent) : QObject(parent), prog_(QCoreApplication::applicationDirPath()) {
+CSLOLToolsImpl::CSLOLToolsImpl(QObject* parent) : QObject(parent) {
+#ifdef Q_OS_MAC
+    // Data goes to user directory
+    prog_ = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(prog_); // Ensure directory exists
+    
+    // Tools stay in app bundle
+    toolsPath_ = QCoreApplication::applicationDirPath();
+    
+    // Log file in user directory
+    QString logPath = prog_ + "/log.txt";
+    logFile_ = new QFile(logPath, this);
+#else
+    prog_ = QCoreApplication::applicationDirPath();
+    toolsPath_ = prog_;  // Same path for Windows
     logFile_ = new QFile(prog_ + "/log.txt", this);
+#endif
+    
     logFile_->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Unbuffered);
     logFile_->write("Version: " + QByteArray(CSLOL::VERSION) + "\n");
 }
@@ -314,7 +331,7 @@ void CSLOLToolsImpl::init() {
         }
 
         setStatus("Check mod-tools");
-        QString modToolsPath = prog_ + "/" + MOD_TOOLS_EXE;
+        QString modToolsPath = toolsPath_ + "/" + MOD_TOOLS_EXE;
         logFile_->write("Looking for mod-tools at: " + modToolsPath.toUtf8() + "\n");
         if (QFileInfo modtools(modToolsPath); !modtools.exists()) {
              doReportError("Check mod-tools",
@@ -647,10 +664,10 @@ void CSLOLToolsImpl::runTool(QStringList args, std::function<void(int code, QPro
             process->deleteLater();
         }
     });
-QString modToolsPath = prog_ + "/" + MOD_TOOLS_EXE;
+QString modToolsPath = toolsPath_ + "/" + MOD_TOOLS_EXE;
 qDebug() << "DEBUG: Looking for mod-tools at:" << modToolsPath;
 qDebug() << "DEBUG: File exists?" << QFileInfo(modToolsPath).exists();
-    process->start(prog_ + "/" + MOD_TOOLS_EXE, args);
+process->start(toolsPath_ + "/" + MOD_TOOLS_EXE, args);
 }
 
 void CSLOLToolsImpl::runPatcher(QStringList args) {
@@ -686,7 +703,7 @@ void CSLOLToolsImpl::runPatcher(QStringList args) {
             }
         });
     }
-    patcherProcess_->start(prog_ + "/" + MOD_TOOLS_EXE, args);
+    patcherProcess_->start(toolsPath_ + "/" + MOD_TOOLS_EXE, args);
 }
 
 void CSLOLToolsImpl::runDiagInternal(bool internal_once) {
@@ -719,5 +736,5 @@ void CSLOLToolsImpl::runDiagInternal(bool internal_once) {
     connect(process, &QProcess::errorOccurred, this, [=, this](QProcess::ProcessError error) {
         process->deleteLater();
     });
-    process->start(prog_ + DIAG_TOOL_EXE, QStringList{"d"});
+    process->start(toolsPath_ + DIAG_TOOL_EXE, QStringList{"d"});
 }

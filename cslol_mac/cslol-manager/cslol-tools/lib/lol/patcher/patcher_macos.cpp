@@ -1,144 +1,269 @@
 #ifdef __APPLE__
-#    include <algorithm>
-#    include <chrono>
-#    include <cstdio>
-#    include <cstring>
-#    include <functional>
-#    include <thread>
-
-#    include "utility/delay.hpp"
-#    include "utility/macho.hpp"
-#    include "utility/process.hpp"
-
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <functional>
+#include <thread>
+#include <mach-o/dyld.h>
+#include "utility/delay.hpp"
+#include "utility/process.hpp"
+#include "runtime_injector_macos.hpp"
 // do not reorder
-#    include <lol/error.hpp>
-#    include <lol/patcher/patcher.hpp>
+#include <lol/error.hpp>
+#include <lol/patcher/patcher.hpp>
+#include <lol/fs.hpp>
 
 using namespace lol;
 using namespace lol::patcher;
 using namespace std::chrono_literals;
 
-struct Payload {
-    unsigned char ret_true[8] = {0xb8, 0x01, 0x00, 0x00, 0x00, 0xc2, 0x00, 0x00};
-    PtrStorage fopen_hook_ptr = {};
-    unsigned char fopen_hook[0x80] = {
-        0x55, 0x48, 0x89, 0xe5, 0x41, 0x54, 0x41, 0x55, 0x48, 0x81, 0xec, 0x00, 0x08, 0x00, 0x00, 0x49,
-        0x89, 0xfc, 0x49, 0x89, 0xf5, 0x4d, 0x85, 0xe4, 0x74, 0x4a, 0x4d, 0x85, 0xed, 0x74, 0x45, 0x41,
-        0x80, 0x7d, 0x00, 0x72, 0x75, 0x3e, 0x41, 0x80, 0x7d, 0x01, 0x62, 0x75, 0x37, 0x41, 0x80, 0x7d,
-        0x02, 0x00, 0x75, 0x30, 0x48, 0x89, 0xe7, 0x48, 0x8d, 0x35, 0x4a, 0x00, 0x00, 0x00, 0xac, 0xaa,
-        0x84, 0xc0, 0x75, 0xfa, 0x48, 0xff, 0xcf, 0x4c, 0x89, 0xe6, 0xac, 0xaa, 0x84, 0xc0, 0x75, 0xfa,
-        0x48, 0x89, 0xe7, 0x4c, 0x89, 0xee, 0x48, 0x8b, 0x05, 0x23, 0x00, 0x00, 0x00, 0xff, 0x10, 0x48,
-        0x85, 0xc0, 0x75, 0x0f, 0x4c, 0x89, 0xe7, 0x4c, 0x89, 0xee, 0x48, 0x8b, 0x05, 0x0f, 0x00, 0x00,
-        0x00, 0xff, 0x10, 0x48, 0x81, 0xc4, 0x00, 0x08, 0x00, 0x00, 0x41, 0x5d, 0x41, 0x5c, 0x5d, 0xc3,
-    };
-    PtrStorage fopen_org_ptr = {};
-    char prefix[0x200] = {};
-};
-
-static uint8_t const PAT_INT_RSA_VERIFY[] = {
-    0x55, 0x48, 0x89, 0xE5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53,
-    0x48, 0x83, 0xEC, 0x38, 0x4D, 0x89, 0xCD, 0x4D, 0x89, 0xC4, 0x48, 0x89, 0xCB,
-};
-
 struct Context {
-    std::uint64_t off_rsa_verify = {};
-    std::uint64_t off_fopen_org = {};
-    std::uint64_t off_fopen_ref = {};
-    std::string prefix;
-
-    auto set_prefix(fs::path const& profile_path) -> void {
-        prefix = fs::absolute(profile_path.lexically_normal()).generic_string();
-        if (!prefix.ends_with('/')) {
-            prefix.push_back('/');
-        }
-        if (prefix.size() > sizeof(Payload::prefix) - 1) {
-            lol_throw_msg("Prefix path too big!");
+    std::string mod_path;
+    std::string dylib_path;
+    bool injection_attempted = false;
+    bool using_launch_method = false;
+    pid_t managed_league_pid = 0;
+    
+    auto set_mod_path(std::filesystem::path const& profile_path) -> void {
+        mod_path = std::filesystem::absolute(profile_path.lexically_normal()).generic_string();
+        if (!mod_path.ends_with('/')) {
+            mod_path.push_back('/');
         }
     }
-
-    auto scan(Process const& process) -> void {
-        auto data = process.Dump();
-        auto macho = MachO{};
-        macho.parse_data((MachO::data_t)data.data(), data.size());
-
-        const auto i_rsa_verify = std::search((uint8_t const*)data.data(),
-                                              (uint8_t const*)data.data() + data.size(),
-                                              std::begin(PAT_INT_RSA_VERIFY),
-                                              std::end(PAT_INT_RSA_VERIFY));
-        if (i_rsa_verify == (uint8_t const*)data.data() + data.size()) {
-            throw std::runtime_error("Failed to find int_rsa_verify");
+    
+    auto build_interception_dylib() -> void {
+        // Get the directory where mod-tools is actually located
+        char path[1024];
+        uint32_t size = sizeof(path);
+        if (_NSGetExecutablePath(path, &size) == 0) {
+            auto exe_path = std::filesystem::path(path);
+            auto exe_dir = exe_path.parent_path();
+            dylib_path = exe_dir / "libcslol_interception.dylib";
+        } else {
+            dylib_path = "./libcslol_interception.dylib";
         }
-        off_rsa_verify = (std::uint64_t)(i_rsa_verify - (uint8_t const*)data.data()) + 0x100000000ull;
-
-        if (!(off_fopen_org = macho.find_import_ptr("_fopen"))) {
-            throw std::runtime_error("Failed to find fopen org");
+        
+        // Check if dylib exists
+        if (!std::filesystem::exists(dylib_path)) {
+            throw std::runtime_error("Interception dylib not found: " + dylib_path);
         }
-        if (!(off_fopen_ref = macho.find_stub_refs(off_fopen_org))) {
-            throw std::runtime_error("Failed to find fopen ref");
+        
+        printf("[CSLOL] Using dylib: %s\n", dylib_path.c_str());
+    }
+    
+    auto wait_for_league_or_launch() -> uint32_t {
+        printf("[CSLOL] Looking for existing League process...\n");
+        
+        // Check if League is already running
+        auto existing_pid = Process::FindPid("/LeagueofLegends");
+        if (existing_pid) {
+            printf("[CSLOL] Found existing League process (PID: %d)\n", existing_pid);
+            return existing_pid;
+        }
+        
+        printf("[CSLOL] No existing League process found\n");
+        
+        // Check if we can do runtime injection
+        if (!RuntimeInjector::is_runtime_injection_available()) {
+            printf("[CSLOL] Runtime injection not available - will launch League with injection\n");
+            using_launch_method = true;
+            
+            // Launch League with our dylib
+            managed_league_pid = RuntimeInjector::launch_league_with_injection(
+                RuntimeInjector::find_league_executable(), 
+                dylib_path, 
+                mod_path
+            );
+            
+            if (managed_league_pid > 0) {
+                printf("[CSLOL] Successfully launched League with injection (PID: %d)\n", managed_league_pid);
+                return managed_league_pid;
+            } else {
+                printf("[CSLOL] Failed to launch League with injection\n");
+                throw std::runtime_error("Failed to launch League with injection");
+            }
+        } else {
+            printf("[CSLOL] Runtime injection available - waiting for League to start...\n");
+            
+            // Wait for League to start normally
+            for (;;) {
+                auto pid = Process::FindPid("/LeagueofLegends");
+                if (pid) {
+                    return pid;
+                }
+                std::this_thread::sleep_for(100ms);
+            }
         }
     }
-
-    auto patch(Process const& process) -> void {
-        auto payload = Payload{};
-        memcpy(payload.prefix, prefix.c_str(), prefix.size() + 1);
-        payload.fopen_org_ptr = process.Rebase(off_fopen_org);
-
-        auto const ptr_rsa_verify = process.Rebase<Payload>(off_rsa_verify);
-        auto const ptr_fopen_ref = process.Rebase<int32_t>(off_fopen_ref);
-
-        // fopen_hook_ptr stores pointer to fopen_hook, fopen_ref uses relative addressing to call it
-        payload.fopen_hook_ptr = (PtrStorage)ptr_rsa_verify + offsetof(Payload, fopen_hook);
-        auto const fopen_hook_ref =
-            (std::int32_t)(+(std::int64_t)((PtrStorage)ptr_rsa_verify + offsetof(Payload, fopen_hook_ptr))  //
-                           - (std::int64_t)((PtrStorage)ptr_fopen_ref + 4));
-
-        // Write payload
-        process.MarkWritable(ptr_rsa_verify);
-        process.Write(ptr_rsa_verify, payload);
-        process.MarkExecutable(ptr_rsa_verify);
-
-        // Write fopen ref
-        process.MarkWritable(ptr_fopen_ref);
-        process.Write(ptr_fopen_ref, fopen_hook_ref);
-        process.MarkExecutable(ptr_fopen_ref);
+    
+    auto attempt_injection(uint32_t pid) -> bool {
+        if (injection_attempted) {
+            return false; // Don't try again
+        }
+        
+        injection_attempted = true;
+        
+        if (using_launch_method) {
+            printf("[CSLOL] League was launched with injection - no runtime injection needed\n");
+            
+            // Just verify that our dylib is loaded
+            std::this_thread::sleep_for(2s);
+            std::string lsof_cmd = "lsof -p " + std::to_string(pid) + " 2>/dev/null | grep cslol";
+            int result = system(lsof_cmd.c_str());
+            if (result == 0) {
+                printf("[CSLOL] ✅ CSLOL dylib is loaded in League process!\n");
+                return true;
+            } else {
+                printf("[CSLOL] ⚠️  Could not verify dylib loading\n");
+                return false;
+            }
+        } else {
+            printf("[CSLOL] Attempting runtime injection into League process (PID: %d)\n", pid);
+            
+            bool success = RuntimeInjector::inject_dylib_into_process(pid, dylib_path, mod_path);
+            
+            if (success) {
+                printf("[CSLOL] Runtime injection successful!\n");
+                
+                // Give it a moment to take effect
+                std::this_thread::sleep_for(1s);
+                
+                // Verify injection worked by checking if our dylib is loaded
+                std::string cmd = "lsof -p " + std::to_string(pid) + " | grep cslol";
+                int result = system(cmd.c_str());
+                if (result == 0) {
+                    printf("[CSLOL] Verified: dylib is loaded in target process!\n");
+                } else {
+                    printf("[CSLOL] Warning: Could not verify dylib loading\n");
+                }
+                
+            } else {
+                printf("[CSLOL] Runtime injection failed!\n");
+                printf("[CSLOL] This is expected with SIP enabled\n");
+                print_manual_instructions();
+            }
+            
+            return success;
+        }
+    }
+    
+    auto print_manual_instructions() -> void {
+        printf("\n=== CSLOL Manager - Manual Setup Instructions ===\n");
+        printf("Runtime injection failed due to system security settings.\n");
+        printf("To use CSLOL Manager:\n\n");
+        printf("Option 1 - Close League and restart through CSLOL Manager:\n");
+        printf("1. Close League of Legends completely\n");
+        printf("2. Start a new game through CSLOL Manager\n");
+        printf("   (CSLOL Manager will launch League with mods enabled)\n\n");
+        printf("Option 2 - Manual environment setup (Advanced):\n");
+        printf("1. Close League completely\n");
+        printf("2. Run these commands in Terminal:\n");
+        printf("   export DYLD_INSERT_LIBRARIES=\"%s\"\n", dylib_path.c_str());
+        printf("   export CSLOL_MOD_PATH=\"%s\"\n", mod_path.c_str());
+        printf("3. Launch League from the same Terminal:\n");
+        printf("   \"/Applications/League of Legends.app/Contents/LoL/Game/League of Legends\"\n");
+        printf("4. To remove later, close Terminal or run:\n");
+        printf("   unset DYLD_INSERT_LIBRARIES CSLOL_MOD_PATH\n");
+        printf("==================================================\n\n");
+    }
+    
+    auto monitor_league(uint32_t initial_pid) -> void {
+        uint32_t current_pid = initial_pid;
+        
+        for (;;) {
+            auto pid = Process::FindPid("/LeagueofLegends");
+            if (!pid) {
+                printf("[CSLOL] League process exited\n");
+                injection_attempted = false; // Reset for next time
+                using_launch_method = false;
+                managed_league_pid = 0;
+                break;
+            }
+            
+            // Check if League restarted (new PID)
+            if (pid != current_pid) {
+                printf("[CSLOL] League restarted with new PID: %d\n", pid);
+                current_pid = pid;
+                injection_attempted = false; // Reset injection flag
+                
+                // If we were managing the previous process, we need to launch again
+                if (using_launch_method) {
+                    printf("[CSLOL] Previous managed League process ended, launching new one...\n");
+                    managed_league_pid = RuntimeInjector::launch_league_with_injection(
+                        RuntimeInjector::find_league_executable(), 
+                        dylib_path, 
+                        mod_path
+                    );
+                    if (managed_league_pid > 0) {
+                        current_pid = managed_league_pid;
+                    }
+                } else {
+                    // Wait a moment for League to fully initialize
+                    std::this_thread::sleep_for(2s);
+                    
+                    // Attempt injection into new process
+                    attempt_injection(current_pid);
+                }
+            }
+            
+            std::this_thread::sleep_for(1s);
+        }
     }
 };
 
 auto patcher::run(std::function<void(Message, char const*)> update,
-                  fs::path const& profile_path,
-                  fs::path const& config_path,
-                  fs::path const& game_path,
-                  fs::names const& opts) -> void {
+                  std::filesystem::path const& profile_path,
+                  std::filesystem::path const& config_path,
+                  std::filesystem::path const& game_path,
+                  lol::fs::names const& opts) -> void {
     auto ctx = Context{};
-    ctx.set_prefix(profile_path);
-    (void)config_path;
-    (void)game_path;
-    (void)opts;
-    for (;;) {
-        auto pid = Process::FindPid("/LeagueofLegends");
-        if (!pid) {
-            update(M_WAIT_START, "");
-            sleep_ms(10);
-            continue;
+    ctx.set_mod_path(profile_path);
+    
+    try {
+        // Build/locate the interception dylib
+        ctx.build_interception_dylib();
+        
+        printf("[CSLOL] CSLOL Manager - Smart Injection Mode\n");
+        printf("[CSLOL] Mod path: %s\n", ctx.mod_path.c_str());
+        
+        // Check system capabilities
+        if (RuntimeInjector::is_runtime_injection_available()) {
+            printf("[CSLOL] Runtime injection available\n");
+        } else {
+            printf("[CSLOL] Runtime injection blocked - will use launch method\n");
         }
-
-        update(M_FOUND, "");
-        auto process = Process::Open(pid);
-
-        update(M_SCAN, "");
-        ctx.scan(process);
-
-        update(M_PATCH, "");
-        ctx.patch(process);
-
-        update(M_WAIT_EXIT, "");
-        run_until_or(
-            3h,
-            Intervals{5s, 10s, 15s},
-            [&] { return process.IsExited(); },
-            []() -> bool { throw PatcherTimeout(std::string("Timed out exit")); });
-
-        update(M_DONE, "");
+        
+        for (;;) {
+            update(M_WAIT_START, "");
+            printf("[CSLOL] Waiting for League of Legends...\n");
+            
+            auto pid = ctx.wait_for_league_or_launch();
+            update(M_FOUND, "");
+            printf("[CSLOL] League process ready (PID: %d)\n", pid);
+            
+            // Wait a moment for League to fully initialize
+            if (!ctx.using_launch_method) {
+                std::this_thread::sleep_for(2s);
+            }
+            
+            update(M_SCAN, "");
+            update(M_PATCH, "");
+            
+            // Attempt injection (or verify if using launch method)
+            ctx.attempt_injection(pid);
+            
+            update(M_WAIT_EXIT, "");
+            printf("[CSLOL] Monitoring League process...\n");
+            
+            // Monitor League process
+            ctx.monitor_league(pid);
+            
+            update(M_DONE, "");
+        }
+    } catch (std::exception const& e) {
+        printf("[CSLOL] Error: %s\n", e.what());
+        throw;
     }
 }
 

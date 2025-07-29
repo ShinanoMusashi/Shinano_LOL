@@ -14,6 +14,8 @@ set(__QT_DEPLOY_TARGET_miniz_FILE /Users/user/Documents/lol-skins-main/skins/csl
 set(__QT_DEPLOY_TARGET_miniz_TYPE STATIC_LIBRARY)
 set(__QT_DEPLOY_TARGET_cslol-lib_FILE /Users/user/Documents/lol-skins-main/skins/cslol_mac/cslol-manager/build/cslol-tools/libcslol-lib.a)
 set(__QT_DEPLOY_TARGET_cslol-lib_TYPE STATIC_LIBRARY)
+set(__QT_DEPLOY_TARGET_cslol_interception_FILE /Users/user/Documents/lol-skins-main/skins/cslol_mac/cslol-manager/build/cslol-tools/libcslol_interception.dylib)
+set(__QT_DEPLOY_TARGET_cslol_interception_TYPE SHARED_LIBRARY)
 set(__QT_DEPLOY_TARGET_mod-tools_FILE /Users/user/Documents/lol-skins-main/skins/cslol_mac/cslol-manager/build/cslol-tools/mod-tools)
 set(__QT_DEPLOY_TARGET_mod-tools_TYPE EXECUTABLE)
 set(__QT_DEPLOY_TARGET_wad-extract_FILE /Users/user/Documents/lol-skins-main/skins/cslol_mac/cslol-manager/build/cslol-tools/wad-extract)

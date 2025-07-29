@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     libcslol_minimal_test_arm64.dylib
+relocations:     []
+...

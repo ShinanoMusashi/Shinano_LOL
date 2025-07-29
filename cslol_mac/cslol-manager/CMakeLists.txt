@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
-
 project(cslol-manager LANGUAGES CXX C)
+
+# Keep x86_64 for Rosetta 2 compatibility with League of Legends
+set(CMAKE_OSX_ARCHITECTURES "x86_64")
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -9,9 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOUIC OFF)
 set(CMAKE_AUTOMOC OFF)
 set(CMAKE_AUTORCC OFF)
-
 add_subdirectory(cslol-tools)
-
 option(USE_QT6 "Use Qt6 instead of Qt5" OFF)
 if (USE_QT6)
     find_package(Qt6 6.1 COMPONENTS Core Gui Quick QmlImportScanner Network REQUIRED)
@@ -20,7 +20,6 @@ else()
 endif()
 find_package(Threads REQUIRED)
 find_package(Git QUIET REQUIRED)
-
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/CSLOLversion.cpp"
     COMMAND "${GIT_EXECUTABLE}"
@@ -37,7 +36,6 @@ char const* CSLOL::DATE=\"%aI\";%n"
     DEPENDS "${CMAKE_SOURCE_DIR}/.git/index"
     VERBATIM
     )
-
 if (WIN32)
     add_executable(cslol-manager WIN32
         src/main.cpp
@@ -63,10 +61,9 @@ elseif(APPLE)
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
         MACOSX_BUNDLE_GUI_IDENTIFIER cslol.manager
         )
-    
-    # ADD THIS BLOCK HERE:
+    # UPDATED: Copy both regular tools AND the interception dylib
     add_custom_command(TARGET cslol-manager POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory 
+    COMMAND ${CMAKE_COMMAND} -E make_directory
     ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools
     COMMAND ${CMAKE_COMMAND} -E copy
     ${CMAKE_BINARY_DIR}/cslol-tools/mod-tools
@@ -77,9 +74,36 @@ elseif(APPLE)
     COMMAND ${CMAKE_COMMAND} -E copy
     ${CMAKE_BINARY_DIR}/cslol-tools/wad-make
     ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/wad-make
+    # NEW: Copy the interception dylib
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_BINARY_DIR}/cslol-tools/libcslol_interception.dylib
+    ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/libcslol_interception.dylib
     COMMENT "Copying all cslol-tools into app bundle"
-    DEPENDS mod-tools wad-extract wad-make
+    DEPENDS mod-tools wad-extract wad-make cslol_interception
 )
+    
+    # NEW: Code signing with entitlements for runtime injection
+    # Sign individual tools first, then the main app
+    
+    #add_custom_command(TARGET cslol-manager POST_BUILD
+    #    COMMAND codesign --force --sign - 
+    #            --entitlements ${CMAKE_SOURCE_DIR}/entitlements.plist
+    #            ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/mod-tools
+    #    COMMAND codesign --force --sign - 
+    #            --entitlements ${CMAKE_SOURCE_DIR}/entitlements.plist
+    #            ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/wad-extract
+    #    COMMAND codesign --force --sign - 
+    #            --entitlements ${CMAKE_SOURCE_DIR}/entitlements.plist
+    #            ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/wad-make
+    #    COMMAND codesign --force --sign - 
+    #            --entitlements ${CMAKE_SOURCE_DIR}/entitlements.plist
+    #            ${CMAKE_BINARY_DIR}/cslol-manager.app/Contents/MacOS/cslol-tools/libcslol_interception.dylib
+    #    COMMAND codesign --force --sign - 
+    #            --entitlements ${CMAKE_SOURCE_DIR}/entitlements.plist
+    #            --deep
+    #            ${CMAKE_BINARY_DIR}/cslol-manager.app
+    #    COMMENT "Code signing with runtime injection entitlements"
+    #)
     
     install(CODE [[
       include(BundleUtilities)
@@ -90,7 +114,6 @@ else()
         src/main.cpp
     )
 endif()
-
 target_sources(cslol-manager PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/CSLOLversion.cpp"
     src/CSLOLTools.h
@@ -102,13 +125,10 @@ target_sources(cslol-manager PRIVATE
     src/CSLOLVersion.h
     src/qml/qml.qrc
 )
-
 set_target_properties(cslol-manager PROPERTIES AUTOUIC ON)
 set_target_properties(cslol-manager PROPERTIES AUTOMOC ON)
 set_target_properties(cslol-manager PROPERTIES AUTORCC ON)
-
 target_compile_definitions(cslol-manager PRIVATE $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>)
 target_link_libraries(cslol-manager PRIVATE Qt::Core Qt::Gui Qt::Quick Qt::Network Threads::Threads)
 target_include_directories(cslol-manager PRIVATE src/)
-
 qt_import_qml_plugins(cslol-manager)

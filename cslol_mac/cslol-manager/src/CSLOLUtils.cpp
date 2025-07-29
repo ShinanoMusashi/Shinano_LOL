@@ -323,37 +323,40 @@ QString CSLOLUtils::detectGamePath() {
 }
 
 QString CSLOLUtils::isPlatformUnsuported() {
+    /*
     int ret = 0;
     size_t size = sizeof(ret);
     if (sysctlbyname("sysctl.proc_translated", &ret, &size, NULL, 0) == 0 && ret == 1)  {
         return QString{"Apple silicon (M1, M2...) macs are not supported.\nOnly intel based macs are supported."};
     }
+    */
     return QString{""};
 }
 
 void CSLOLUtils::relaunchAdmin(int argc, char *argv[]) {
+    // Skip admin relaunch on macOS - not needed for file system approach
+    Q_UNUSED(argc)
+    Q_UNUSED(argv)
+    return;
+    
+    /* Original admin code commented out - keep for reference
     QCoreApplication::setSetuidAllowed(true);
-
     if (argc > 1 && strcmp(argv[1], "admin") == 0) {
         puts("Authed!");
         return;
     }
-
     fix_translocate();
-
     char path[PATH_MAX];
     uint32_t path_max_size = PATH_MAX;
     if (_NSGetExecutablePath(path, &path_max_size) != KERN_SUCCESS) {
         return;
     }
-
     AuthorizationRef authorizationRef;
     OSStatus createStatus = AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment, kAuthorizationFlagDefaults, &authorizationRef);
     if (createStatus != errAuthorizationSuccess) {
         fprintf(stderr, "Failed to create auth!\n");
         return;
     }
-
     AuthorizationItem right = {kAuthorizationRightExecute, 0, NULL, 0};
     AuthorizationRights rights = {1, &right};
     AuthorizationFlags flags = kAuthorizationFlagDefaults
@@ -364,19 +367,16 @@ void CSLOLUtils::relaunchAdmin(int argc, char *argv[]) {
         fprintf(stderr, "Failed to create copy!\n");
         return;
     }
-
     char* args[] = { strdup("admin"), NULL };
     FILE* pipe = NULL;
-
     OSStatus execStatus = AuthorizationExecuteWithPrivileges(authorizationRef, path, kAuthorizationFlagDefaults, args, &pipe);
     if (execStatus != errAuthorizationSuccess) {
         fprintf(stderr, "Failed to exec auth: %x\n", execStatus);
         return;
     }
-
     AuthorizationFree(authorizationRef, kAuthorizationFlagDestroyRights);
-
     exit(0);
+    */
 }
 #else
 QString CSLOLUtils::detectGamePath() { return ""; }

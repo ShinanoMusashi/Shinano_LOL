@@ -83,6 +83,7 @@ private:
     QLockFile* lockfile_ = nullptr;
     QProcess* patcherProcess_ = nullptr;
     QString prog_ = "";
+    QString toolsPath_;
     QString game_ = "";
     CSLOLToolsImpl::CSLOLState state_ = CSLOLState::StateUnitialized;
     bool blacklist_ = true;
